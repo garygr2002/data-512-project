@@ -2,17 +2,31 @@
 Analysis of New York City Income Data Versus Ethnicity
 """
 import os
+
+import matplotlib.pyplot as plt
+import matplotlib.lines as lines
+import matplotlib.ticker as ticker
+
+import numpy as np
 import pandas as pd
 
-# Declare and initialize strings.
+# Declare and initialize file names.
 DEMOGRAPHICS_FILENAME = 'Demographic_Statistics_By_Zip_Code.csv'
 NY_WITH_AGI_FILENAME = 'ny_agi.csv'
 NY_WITHOUT_AGI_FILENAME = 'ny_no_agi.csv'
 NYC_WITH_AGI_FILENAME = 'nyc_agi.csv'
 NYC_WITHOUT_AGI_FILENAME = 'nyc_no_agi.csv'
-STATE = 'NY'
 WITH_AGI_FILENAME = '15zpallagi.csv'
 WITHOUT_AGI_FILENAME = '15zpallnoagi.csv'
+
+# Declare and initialize dictionary keys for plotting.
+COLOR_KEY = 'color_key'
+ETHNICITY_KEY = 'ethnicity_key'
+LESS_KEY = 'less_key'
+MORE_KEY = 'more_key'
+
+# Declare and initialize other constants.
+STATE = 'NY'
 ZIP_CODE_FEATURE = 'zip_code'
 
 # Declare and initialize paths.
@@ -23,6 +37,36 @@ PYCHARM_PATH = os.path.join(os.sep, 'home', 'gary',
 PROJECT_PATH = PYCHARM_PATH
 IRS_PATH = os.path.join(PROJECT_PATH, "IRS")
 NYC_PATH = os.path.join(PROJECT_PATH, "NYC")
+
+
+def format_money(amount, pos):
+    """
+    Formats money for the 'y' axis of a plot.
+
+    :param amount: The amount
+    :type amount: int
+    :param pos: The position argument
+    :type pos: int
+    :return: A formatted money string
+    :rtype: str
+    """
+    # pylint: disable=unused-argument
+    return '${:,.0f}'.format(amount)
+
+
+def format_percent(percentage, pos):
+    """
+    Formats percentages for the 'x' axis of a plot.
+
+    :param percentage: The fraction between 0.0 and 1.0
+    :type percentage: float
+    :param pos: The position argument
+    :type pos: int
+    :return: A formatted percentage string
+    :rtype: str
+    """
+    # pylint: disable=unused-argument
+    return '{:.0f}%'.format(percentage * 100.)
 
 
 def get_demographics():
@@ -47,9 +91,9 @@ def get_demographic_data():
     return modify_demographic_data(get_demographics())
 
 
-def get_income_data(zip_codes):
+def get_income_data_with_agi(zip_codes):
     """
-    Gets income data for New York City and modifies it.
+    Gets income data with AGI for New York City and modifies it.
 
     :param data_frame: A data frame containing a 'ZIPCODE' field
     :type data_frame: pandas.core.frame.DataFrame
@@ -62,7 +106,23 @@ def get_income_data(zip_codes):
 
     data_frame = get_ny_with_agi()
     data_frame = get_nyc_with_agi(data_frame, zip_codes)
-    return modify_income_data(data_frame)
+    return modify_income_data_with_agi(data_frame)
+
+
+def get_income_data_without_agi(zip_codes):
+    """
+    TODO: Fill this in.
+
+    :param zip_codes:
+    :type zip_codes:
+    :return:
+    :return:
+    :rtype:
+    """
+
+    data_frame = get_ny_without_agi()
+    data_frame = get_nyc_without_agi(data_frame, zip_codes)
+    return modify_income_data_without_agi(data_frame)
 
 
 def get_ny_common(reduced_filename, whole_filename):
@@ -99,7 +159,8 @@ def get_ny_common(reduced_filename, whole_filename):
     return data_frame
 
 
-def get_nyc_common(reduced_filename, data_frame, target_zipcodes):
+def get_nyc_common(reduced_filename, data_frame, target_zipcodes,
+                   zipcode_fieldname='zipcode'):
     """
     Gets income data for the New York City.  Write the existing data frame
     if it does not already exist, and returns it.
@@ -110,6 +171,9 @@ def get_nyc_common(reduced_filename, data_frame, target_zipcodes):
     :type data_frame: pandas.core.frame.DataFrame
     :param target_zipcodes: A collection of ZIP codes
     :type target_zipcodes: set or list-like
+    :param zipcode_fieldname The name of the field in the data frame containing
+    ZIP codes
+    :type zipcode_fieldname str
     :return: A data frame containing income data only for the New York City
     :rtype: pandas.core.frame.DataFrame
     """
@@ -125,7 +189,8 @@ def get_nyc_common(reduced_filename, data_frame, target_zipcodes):
         print('New York City files does not exist; creating it...')
         reduced_data_frame = isolate_nyc(reduced_filepath,
                                          data_frame,
-                                         target_zipcodes)
+                                         target_zipcodes,
+                                         zipcode_fieldname)
 
     return reduced_data_frame
 
@@ -188,7 +253,7 @@ def get_nyc_without_agi(data_frame, target_zipcodes):
     """
 
     return get_nyc_common(NYC_WITHOUT_AGI_FILENAME, data_frame,
-                          target_zipcodes)
+                          target_zipcodes, zipcode_fieldname='ZIPCODE')
 
 
 def isolate(output_filepath, data_frame, target_state):
@@ -214,7 +279,8 @@ def isolate(output_filepath, data_frame, target_state):
     return reduced_data_frame
 
 
-def isolate_nyc(output_filepath, data_frame, target_zipcodes):
+def isolate_nyc(output_filepath, data_frame, target_zipcodes,
+                zipcode_fieldname='zipcode'):
     """
     Isolates records in a data frame.  Records must contain a 'ZIPCODE' field.
     Writes the resulting data frame to a csv file with a given name, and
@@ -227,12 +293,16 @@ def isolate_nyc(output_filepath, data_frame, target_zipcodes):
     :type data_frame: pandas.core.frame.DataFrame
     :param target_zipcodes: A collection of ZIP codes
     :type target_zipcodes: set or list-like
+    :param zipcode_fieldname The name of the field in the data frame containing
+    ZIP codes
+    :type zipcode_fieldname str
     :return: A data frame containing record with only the given ZIP code
     values
     :rtype: pandas.core.frame.DataFrame
     """
 
-    reduced_data_frame = data_frame[data_frame.zipcode.isin(target_zipcodes)]
+    reduced_data_frame =\
+        data_frame[data_frame[zipcode_fieldname].isin(target_zipcodes)]
     reduced_data_frame.to_csv(output_filepath)
     return reduced_data_frame
 
@@ -280,7 +350,7 @@ def modify_demographic_data(data_frame):
     return data_frame
 
 
-def modify_income_data(data_frame):
+def modify_income_data_with_agi(data_frame):
     """
     Modifies income data that has an AGI breakdown.  Retains only required
     columns, renames required columns, renames values in the AGI limit
@@ -320,12 +390,121 @@ def modify_income_data(data_frame):
     return data_frame
 
 
+def modify_income_data_without_agi(data_frame):
+    """
+    Modifies income data that has no AGI breakdown.  Retains only required
+    columns, renames required columns, and calculates average income.
+
+    :param data_frame: A data frame with required columns given in the column
+    map embedded in this function
+    :type data_frame: pandas.core.frame.DataFrame
+    :return: A data frame as modified in the description of this method
+    :rtype: pandas.core.frame.DataFrame
+    """
+
+    # Define some column names.
+    average_income_column = 'average_income'
+    return_count_column = 'number_of_returns'
+    total_income_column = 'total_income_thsnds'
+
+    # Map existing column names to their new names.
+    column_map = {'ZIPCODE' : ZIP_CODE_FEATURE,
+                  'N02650' : return_count_column,
+                  'A02650' : total_income_column}
+
+    # Remove all but the key columns in the map.
+    data_frame = data_frame[list(column_map.keys())]
+
+    # Rename the columns.
+    data_frame = data_frame.rename(index=str, columns=column_map)
+
+    # Calculate average total income, and return the data frame.
+    data_frame[average_income_column] =\
+        np.round(data_frame[total_income_column] * 1000. /\
+        data_frame[return_count_column], 2)
+    return data_frame
+
+
+def plot_lines(ethnicities, minimum_income=0, maximum_income=200000):
+    """
+    Plots lines associated with income based on ethnic makeup.
+
+    :param ethnicities: A list or tuple of dictionaries
+    :type ethnicities: list or tuple
+    :return: None
+    :rtype: None
+    """
+
+    # Create a figure, and give it a subplot.
+    figure = plt.figure(figsize=(10, 5))
+    subplot = figure.add_subplot(111)
+
+    # Create a labels list, and cycle for each ethnicity.
+    labels = []
+    for ethnicity in ethnicities:
+
+        # Add a label and a line for the first/next ethnicity.
+        labels.append(ethnicity[ETHNICITY_KEY])
+        subplot.add_line(line=lines.Line2D((-0.1, 1.1),
+                                           (ethnicity[LESS_KEY], ethnicity[MORE_KEY]),
+                                           color=ethnicity[COLOR_KEY]))
+
+    # Set suitable limits for the 'x' and 'y' axes.
+    subplot.set_xlim(0.0, 1.0)
+    subplot.set_ylim(minimum_income, maximum_income)
+
+    # Give each axis an appropriate formatter.
+    subplot.xaxis.set_major_formatter(ticker.FuncFormatter(format_percent))
+    subplot.yaxis.set_major_formatter(ticker.FuncFormatter(format_money))
+
+    # Give the axes appropriate labels, and give the plot a title.
+    plt.xlabel('Percent Ethnic Makeup')
+    plt.ylabel('Average Income')
+    plt.title('Average Income as a Function of Percent Ethnicity in NYC by ZIP Code')
+
+    # Give the plot a legend, and show the plot.
+    subplot.plot(len(ethnicities))
+    subplot.legend(labels)
+    plt.show()
+
+
 # Get the fully formatted demographic data and income data.
 demographics = get_demographic_data()
-income = get_income_data(demographics[ZIP_CODE_FEATURE])
+
+# income = get_income_data_with_agi(demographics[ZIP_CODE_FEATURE])
+income = get_income_data_without_agi(demographics[ZIP_CODE_FEATURE])
 
 # Print the demographic data.
 print(demographics)
 
 # Print the income data.
 print(income)
+
+# Make a sample plot of ethnicities.
+groups = ({COLOR_KEY : 'red',
+           ETHNICITY_KEY : 'African',
+           LESS_KEY : 100000,
+           MORE_KEY : 20000},
+
+          {COLOR_KEY : 'orange',
+           ETHNICITY_KEY : 'Asian',
+           LESS_KEY : 20000,
+           MORE_KEY : 150000},
+
+          {COLOR_KEY : 'blue',
+           ETHNICITY_KEY : 'Caucasian',
+           LESS_KEY : 30000,
+           MORE_KEY : 120000},
+
+          {COLOR_KEY : 'green',
+           ETHNICITY_KEY : 'Hispanic',
+           LESS_KEY : 70000,
+           MORE_KEY : 80000})
+
+plot_lines(groups)
+
+signficance = pd.DataFrame({'Ethnicity' : ('African', 'Asian', 'Caucasian', 'Hispanic'),
+                            'Std. Error' : (0.16014, 0.17214, 0.1801, 0.15142),
+                            'p-value' : '<2e-16'})
+print(signficance)
+
