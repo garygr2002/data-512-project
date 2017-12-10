@@ -10,6 +10,8 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 
+from sklearn import linear_model
+
 # Declare and initialize file names.
 DEMOGRAPHICS_FILENAME = 'Demographic_Statistics_By_Zip_Code.csv'
 NY_WITH_AGI_FILENAME = 'ny_agi.csv'
@@ -25,9 +27,20 @@ ETHNICITY_KEY = 'ethnicity_key'
 LESS_KEY = 'less_key'
 MORE_KEY = 'more_key'
 
-# Declare and initialize other constants.
+# Declare and initialize demographic data constants.
+AFRICAN = 'african'
+CAUCASIAN = 'caucasian'
+LATINO = 'latino'
+PCNT_AFRICAN = 'pcnt_african'
+PCNT_CAUCASIAN = 'pcnt_caucasian'
+PCNT_LATINO = 'pcnt_latino'
 STATE = 'NY'
-ZIP_CODE_FEATURE = 'zip_code'
+ZIP_CODE = 'zip_code'
+
+# Declare and initialize no-AGI income data columns
+AVERAGE_INCOME = 'average_income'
+RETURN_COUNT = 'number_of_returns'
+TOTAL_INCOME = 'total_income_thsnds'
 
 # Declare and initialize paths.
 UW_PATH = os.path.join(os.sep, 'home', 'gary', 'UW Data Science',
@@ -37,6 +50,93 @@ PYCHARM_PATH = os.path.join(os.sep, 'home', 'gary',
 PROJECT_PATH = PYCHARM_PATH
 IRS_PATH = os.path.join(PROJECT_PATH, "IRS")
 NYC_PATH = os.path.join(PROJECT_PATH, "NYC")
+
+
+def create_subset(data_frame, count_column_1, count_column_2, pcnt_column_1, pcnt_column_2):
+    """
+    Creates a subset of a data frame.
+
+    :param data_frame: The data frame from which a subset will be drawn
+    :type data_frame: pandas.core.frame.DataFrame
+    :param count_column_1: The name of the first column
+    :type count_column_1: str
+    :param count_column_2: The name of the second column
+    :type count_column_2: str
+    :param pcnt_column_1: The name of the first percent column
+    :type pcnt_column_1: str
+    :param pcnt_column_2: The name of the second percent column
+    :type pcnt_column_2: str
+    :return: A data frame in which one or both of the values in the first
+    or second columns is greater than zero, and in which columns for the
+    fraction of values first versus second, and second versus first have
+    been added
+    :rtype: pandas.core.frame.DataFrame
+    """
+
+    # Retain only rows where either the value in the first column or the
+    # value in the second column is greater than zero.
+    target_value = 0
+    subset = pd.DataFrame(
+        data_frame[(data_frame[count_column_1] > target_value) |
+                   (data_frame[count_column_2] > target_value)])
+
+    # Create the two percentage columns and return the resulting data frame.
+    subset[pcnt_column_1] = determine_percentage(subset[count_column_1],
+                                                 subset[count_column_2])
+    subset[pcnt_column_2] = 1. - subset[pcnt_column_1]
+    return subset
+
+
+def create_model(data_frame, column_1, column_2):
+    """
+    Creates a linear model.
+
+    :param data_frame: The data frame containing the values to model
+    :type data_frame: pandas.core.frame.DataFrame
+    :param column_1: The name of the 'x' column
+    :type column_1: str
+    :param column_2: The name of the 'y' column
+    :type column_2: str
+    :return: A linear model of the second column by the first
+    :rtype: sklearn.linear_model.LinearRegression
+    """
+
+    # Determine the number of rows in the frame, and create the model.
+    length = len(data_frame)
+    model = linear_model.LinearRegression()
+
+    # Fit the model and return it.
+    model.fit(data_frame[column_1].values.reshape(length, 1),
+              data_frame[column_2].values.reshape(length, 1))
+    return model
+
+
+def determine_percentage(numerator, other):
+    """
+    Determines a fraction.
+
+    :param numerator: The numerator of the calculation
+    :type numerator: int
+    :param other: The values that will be added to the numerator to
+    calculate the denominator
+    :type other: int
+    :return: The fraction of the numerator divided by the sum of the two
+    arguments
+    :rtype: int
+    """
+    return numerator / (numerator + other)
+
+
+def format_coefficient(model):
+    """
+    Formats the coefficient of a model for display.
+
+    :param model: A linear model
+    :type model: sklearn.linear_model.LinearRegression
+    :return: The formatted coefficient
+    :rtype: str
+    """
+    return "{:,}".format(round(model.coef_.tolist()[0][0], 2))
 
 
 def format_money(amount, pos):
@@ -93,13 +193,13 @@ def get_demographic_data():
 
 def get_income_data_with_agi(zip_codes):
     """
-    Gets income data with AGI for New York City and modifies it.
+    Gets income data with AGI for New York City, and modifies it.
 
     :param data_frame: A data frame containing a 'ZIPCODE' field
     :type data_frame: pandas.core.frame.DataFrame
     :param target_zipcodes: A collection of ZIP codes
     :type target_zipcodes: set or list-like
-    :return: A data frame containing record with only the given ZIP code
+    :return: A data frame containing records with only the given ZIP code
     values
     :rtype: pandas.core.frame.DataFrame
     """
@@ -111,13 +211,12 @@ def get_income_data_with_agi(zip_codes):
 
 def get_income_data_without_agi(zip_codes):
     """
-    TODO: Fill this in.
+    Gets income data without AGI for New York city, and modifies it.
 
-    :param zip_codes:
-    :type zip_codes:
-    :return:
-    :return:
-    :rtype:
+    :param zip_codes: Only include these ZIP codes
+    :type zip_codes: list or tuple
+    :return: A data frame containing records with only the give ZIP code
+    :rtype: pandas.core.frame.DataFrame
     """
 
     data_frame = get_ny_without_agi()
@@ -280,7 +379,7 @@ def isolate(output_filepath, data_frame, target_state):
 
 
 def isolate_nyc(output_filepath, data_frame, target_zipcodes,
-                zipcode_fieldname='zipcode'):
+                zipcode_fieldname=ZIP_CODE):
     """
     Isolates records in a data frame.  Records must contain a 'ZIPCODE' field.
     Writes the resulting data frame to a csv file with a given name, and
@@ -320,20 +419,20 @@ def modify_demographic_data(data_frame):
     """
 
     # Map existing column names to their new names.
-    column_map = {'JURISDICTION NAME': ZIP_CODE_FEATURE,
+    column_map = {'JURISDICTION NAME': ZIP_CODE,
                   'COUNT PARTICIPANTS': 'participants',
                   'COUNT PACIFIC ISLANDER': 'islander',
                   'PERCENT PACIFIC ISLANDER': 'pcnt_islander',
-                  'COUNT HISPANIC LATINO': 'latino',
-                  'PERCENT HISPANIC LATINO': 'pcnt_latino',
+                  'COUNT HISPANIC LATINO': LATINO,
+                  'PERCENT HISPANIC LATINO': PCNT_LATINO,
                   'COUNT AMERICAN INDIAN': 'native',
                   'PERCENT AMERICAN INDIAN': 'pcnt_native',
                   'COUNT ASIAN NON HISPANIC': 'asian',
                   'PERCENT ASIAN NON HISPANIC': 'pcnt_asian',
-                  'COUNT WHITE NON HISPANIC': 'caucasian',
-                  'PERCENT WHITE NON HISPANIC': 'pcnt_caucasian',
-                  'COUNT BLACK NON HISPANIC': 'african',
-                  'PERCENT BLACK NON HISPANIC': 'pcnt_african',
+                  'COUNT WHITE NON HISPANIC': CAUCASIAN,
+                  'PERCENT WHITE NON HISPANIC': PCNT_CAUCASIAN,
+                  'COUNT BLACK NON HISPANIC': AFRICAN,
+                  'PERCENT BLACK NON HISPANIC': PCNT_AFRICAN,
                   'COUNT OTHER ETHNICITY': 'other',
                   'PERCENT OTHER ETHNICITY': 'pcnt_other',
                   'COUNT ETHNICITY UNKNOWN': 'unknown',
@@ -369,7 +468,7 @@ def modify_income_data_with_agi(data_frame):
     returns_column = 'return_count'
 
     # Map existing column names to their new names.
-    column_map = {'zipcode': ZIP_CODE_FEATURE,
+    column_map = {'zipcode': ZIP_CODE,
                   'agi_stub': agi_column,
                   'N1': returns_column}
 
@@ -408,7 +507,7 @@ def modify_income_data_without_agi(data_frame):
     total_income_column = 'total_income_thsnds'
 
     # Map existing column names to their new names.
-    column_map = {'ZIPCODE' : ZIP_CODE_FEATURE,
+    column_map = {'ZIPCODE' : ZIP_CODE,
                   'N02650' : return_count_column,
                   'A02650' : total_income_column}
 
@@ -423,6 +522,53 @@ def modify_income_data_without_agi(data_frame):
         np.round(data_frame[total_income_column] * 1000. /\
         data_frame[return_count_column], 2)
     return data_frame
+
+
+def perform_test():
+    """
+    Performs a test of some of the data reading methods, and plotting methods.
+    :return: A sample significance data set
+    :rtype: pandas.core.frame.DataFrame
+    """
+
+    # Get the fully formatted demographic data and income data.
+    my_demographics = get_demographic_data()
+
+    # income = get_income_data_with_agi(demographics[ZIP_CODE_FEATURE])
+    my_income = get_income_data_without_agi(my_demographics[ZIP_CODE])
+
+    # Print the demographic data.
+    print(my_demographics)
+
+    # Print the income data.
+    print(my_income)
+
+    # Make a sample plot of ethnicities.
+    groups = ({COLOR_KEY : 'red',
+               ETHNICITY_KEY : 'African',
+               LESS_KEY : 100000,
+               MORE_KEY : 20000},
+
+              {COLOR_KEY : 'orange',
+               ETHNICITY_KEY : 'Asian',
+               LESS_KEY : 20000,
+               MORE_KEY : 150000},
+
+              {COLOR_KEY : 'blue',
+               ETHNICITY_KEY : 'Caucasian',
+               LESS_KEY : 30000,
+               MORE_KEY : 120000},
+
+              {COLOR_KEY : 'green',
+               ETHNICITY_KEY : 'Hispanic',
+               LESS_KEY : 70000,
+               MORE_KEY : 80000})
+
+    plot_lines(groups)
+    signficance = pd.DataFrame({'Ethnicity' : ('African', 'Asian', 'Caucasian', 'Hispanic'),
+                                'Std. Error' : (0.16014, 0.17214, 0.1801, 0.15142),
+                                'p-value' : '<2e-16'})
+    print(signficance)
 
 
 def plot_lines(ethnicities, minimum_income=0, maximum_income=200000):
@@ -468,43 +614,150 @@ def plot_lines(ethnicities, minimum_income=0, maximum_income=200000):
     plt.show()
 
 
-# Get the fully formatted demographic data and income data.
-demographics = get_demographic_data()
+def plot_model(data_frame, column_1, column_2, model,
+               x_label, y_label, plot_title):
+    """
+    Scatterplots percent race to average income, and draws a linear regression
+    line.
 
-# income = get_income_data_with_agi(demographics[ZIP_CODE_FEATURE])
-income = get_income_data_without_agi(demographics[ZIP_CODE_FEATURE])
+    :param data_frame: A data frame containing the named first and second
+    columns
+    :type data_frame: pandas.core.frame.DataFrame
+    :param column_1: The name of the column to be used for 'x' values
+    :type column_1: str
+    :param column_2: The name of the column to be used for 'y' values
+    :type column_2: str
+    :param model: A linear model that has been fit
+    :type model: sklearn.linear_model.LinearRegression
+    :param x_label: The label for the 'x' axis
+    :type x_label: str
+    :param y_label: The label for the 'y' axis
+    :type y_label: str
+    :param plot_title: The title for the plot
+    :type plot_title: str
+    :return: None
+    :rtype: None
+    """
+    # pylint: disable=too-many-arguments
 
-# Print the demographic data.
-print(demographics)
+    # Create a figure and a subplot
+    figure = plt.figure(figsize=(10, 5))
+    subplot = figure.add_subplot(111)
 
-# Print the income data.
-print(income)
+    # Set the formatters for the 'x' and 'y' axes.
+    subplot.xaxis.set_major_formatter(ticker.FuncFormatter(format_percent))
+    subplot.yaxis.set_major_formatter(ticker.FuncFormatter(format_money))
 
-# Make a sample plot of ethnicities.
-groups = ({COLOR_KEY : 'red',
-           ETHNICITY_KEY : 'African',
-           LESS_KEY : 100000,
-           MORE_KEY : 20000},
+    # Scatter plot the values, and create a tuple with the endpoints of
+    # the plot.
+    subplot.scatter(data_frame[column_1], data_frame[column_2], color="green")
+    my_x_ = (0., 1.)
 
-          {COLOR_KEY : 'orange',
-           ETHNICITY_KEY : 'Asian',
-           LESS_KEY : 20000,
-           MORE_KEY : 150000},
+    # Make predictions for the endpoints of the plot, and plot the line.
+    y1_ = model.predict(my_x_[0])
+    y2_ = model.predict(my_x_[1])
+    subplot.plot(my_x_, y1_.tolist() + y2_.tolist(), color="red")
 
-          {COLOR_KEY : 'blue',
-           ETHNICITY_KEY : 'Caucasian',
-           LESS_KEY : 30000,
-           MORE_KEY : 120000},
+    # Label the 'x' and 'y' axes.
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
 
-          {COLOR_KEY : 'green',
-           ETHNICITY_KEY : 'Hispanic',
-           LESS_KEY : 70000,
-           MORE_KEY : 80000})
+    # Label the plot, and show it.
+    plt.title(plot_title)
+    plt.show()
 
-plot_lines(groups)
 
-signficance = pd.DataFrame({'Ethnicity' : ('African', 'Asian', 'Caucasian', 'Hispanic'),
-                            'Std. Error' : (0.16014, 0.17214, 0.1801, 0.15142),
-                            'p-value' : '<2e-16'})
-print(signficance)
+def remove_outliers(data_frame, column_name):
+    """
+    Removes outliers from a data frame.
 
+    :param data_frame: The data frame that will be screened
+    :type data_frame: pandas.core.frame.DataFrame
+    :param column_name: The column name to examine for outliers
+    :type column_name: str
+    :return: A data frame with outliers removed, as defined by the given column
+    :rtype: pandas.core.frame.DataFrame
+    """
+
+    # Calculate the 25th and 75th percentiles and the interquartile distance.
+    q75, q25 = np.percentile(data_frame[column_name].dropna(), [75, 25])
+    iqr = q75 - q25
+
+    # Determine cutoff points for the outliers.
+    distance = 1.5
+    minimum = q25 - (iqr * distance)
+    maximum = q75 + (iqr * distance)
+
+    # Remove the outlier rows.
+    return pd.DataFrame(data_frame[(data_frame[column_name] >= minimum) &
+                                   (data_frame[column_name] <= maximum)])
+
+def run_study():
+    """
+    Runs the NYC income study.
+
+    :return: None
+    :rtype: None
+    """
+
+    # Get the fully formatted demographic data, and isolate only the desired features.
+    desired_demographics = [ZIP_CODE, CAUCASIAN, AFRICAN, LATINO]
+    demographics = get_demographic_data()[desired_demographics]
+
+    # Create the subset data frames.
+    african_vs_caucasian = create_subset(demographics, AFRICAN, CAUCASIAN,
+                                         PCNT_AFRICAN, PCNT_CAUCASIAN)
+
+    african_vs_latino = create_subset(demographics, AFRICAN, LATINO,
+                                      PCNT_AFRICAN, PCNT_LATINO)
+
+    caucasian_vs_latino = create_subset(demographics, CAUCASIAN, LATINO,
+                                        PCNT_CAUCASIAN, PCNT_LATINO)
+
+    # Get the income data only for the ZIP codes that are present in the demographic data.
+    income = get_income_data_without_agi(demographics[ZIP_CODE])
+
+    # Merge income data to the subsets.
+    african_vs_caucasian = african_vs_caucasian.merge(income, on=ZIP_CODE)
+    african_vs_latino = african_vs_latino.merge(income, on=ZIP_CODE)
+    caucasian_vs_latino = caucasian_vs_latino.merge(income, on=ZIP_CODE)
+
+    # Remove average income outliers from the merged income data.
+    african_vs_caucasian_no_outlrs = remove_outliers(african_vs_caucasian, AVERAGE_INCOME)
+    african_vs_latino_no_outliers = remove_outliers(african_vs_latino, AVERAGE_INCOME)
+    caucasian_vs_latino_no_outliers = remove_outliers(caucasian_vs_latino, AVERAGE_INCOME)
+
+    # Create the models.
+    african_vs_caucasian_model = \
+        create_model(african_vs_caucasian_no_outlrs, PCNT_CAUCASIAN, AVERAGE_INCOME)
+
+    caucasian_vs_latino_model = \
+        create_model(caucasian_vs_latino_no_outliers, PCNT_CAUCASIAN, AVERAGE_INCOME)
+
+    african_vs_latino_model = \
+        create_model(african_vs_latino_no_outliers, PCNT_LATINO, AVERAGE_INCOME)
+
+    # Make plots.
+    plot_model(african_vs_caucasian_no_outlrs, PCNT_CAUCASIAN, AVERAGE_INCOME,
+               african_vs_caucasian_model, "Percent Caucasian to African American",
+               "Average Income",
+               "Caucasian to African American, Line Slope: "
+               "{}".format(format_coefficient(african_vs_caucasian_model)))
+
+    plot_model(caucasian_vs_latino_no_outliers, PCNT_CAUCASIAN, AVERAGE_INCOME,
+               caucasian_vs_latino_model, "Percent Caucasian to Latino",
+               "Average Income",
+               "Caucasian to Latino, Line Slope: "
+               "{}".format(format_coefficient(caucasian_vs_latino_model)))
+
+    plot_model(african_vs_latino_no_outliers, PCNT_LATINO, AVERAGE_INCOME,
+               african_vs_latino_model, "Percent Latino to African American",
+               "Average Income",
+               "Latino to African American, Line Slope: "
+               "{}".format(format_coefficient(african_vs_latino_model)))
+
+# Perform the test.
+perform_test()
+
+# Run the study.
+run_study()
